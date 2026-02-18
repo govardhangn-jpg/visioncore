@@ -1,14 +1,18 @@
 /**
  * VISIONCORE — Defect Analysis System
- * app.js — Custom GoTrue auth + Netlify serverless function
+ * app.js — Invite-only auth via Netlify GoTrue API
  *
- * No external widget. Auth calls go directly to Netlify's GoTrue API:
- *   Login:    POST /.netlify/identity/token
- *   Register: POST /.netlify/identity/signup
- *   Refresh:  POST /.netlify/identity/token  (grant_type=refresh_token)
+ * ┌─ Normal flow ─────────────────────────────────────────────┐
+ * │  User visits site → Login screen → POST /token → enter app │
+ * └───────────────────────────────────────────────────────────┘
  *
- * Analysis calls go to:
- *   POST /.netlify/functions/analyze  (Bearer token in header)
+ * ┌─ First-time invite flow ──────────────────────────────────────────────────┐
+ * │  Admin sends invite from Netlify Dashboard → Identity → Invite users      │
+ * │  User clicks email link → lands on site with #invite_token=TOKEN in URL   │
+ * │  App detects token → shows "Set Password" screen                          │
+ * │  User sets password → PUT /.netlify/identity/user (Bearer invite_token)   │
+ * │  App immediately logs in → enter app                                      │
+ * └──────────────────────────────────────────────────────────────────────────┘
  */
 
 "use strict";
@@ -32,116 +36,123 @@ const state = {
 const $  = (id) => document.getElementById(id);
 const el = {
   // Auth
-  loginGate:      $("login-gate"),
-  authAlert:      $("auth-alert"),
-  // Tabs
-  tabBtns:        document.querySelectorAll(".auth-tab"),
-  tabLogin:       $("tab-login"),
-  tabRegister:    $("tab-register"),
+  loginGate:       $("login-gate"),
+  authAlert:       $("auth-alert"),
+  screenLogin:     $("screen-login"),
+  screenInvite:    $("screen-invite"),
   // Login form
-  loginEmail:     $("login-email"),
-  loginPassword:  $("login-password"),
-  loginSubmit:    $("login-submit"),
-  // Register form
-  regEmail:       $("reg-email"),
-  regPassword:    $("reg-password"),
-  regConfirm:     $("reg-confirm"),
-  regSubmit:      $("reg-submit"),
-  // App
-  app:            $("app"),
-  userInfo:       $("user-info"),
-  logoutBtn:      $("logout-btn"),
+  loginEmail:      $("login-email"),
+  loginPassword:   $("login-password"),
+  loginSubmit:     $("login-submit"),
+  // Invite form
+  inviteEmail:     $("invite-email"),
+  invitePassword:  $("invite-password"),
+  inviteConfirm:   $("invite-confirm"),
+  inviteSubmit:    $("invite-submit"),
+  // App shell
+  app:             $("app"),
+  userInfo:        $("user-info"),
+  logoutBtn:       $("logout-btn"),
   // Sidebar
-  imageList:      $("image-list"),
-  imageCount:     $("image-count"),
-  queueCount:     $("queue-count"),
-  addBtn:         $("add-btn"),
-  fileInput:      $("file-input"),
+  imageList:       $("image-list"),
+  imageCount:      $("image-count"),
+  queueCount:      $("queue-count"),
+  addBtn:          $("add-btn"),
+  fileInput:       $("file-input"),
   // Content
-  dropZone:       $("drop-zone"),
-  workspace:      $("workspace"),
+  dropZone:        $("drop-zone"),
+  workspace:       $("workspace"),
   // Viewer
-  viewerFilename: $("viewer-filename"),
-  confidenceMeta: $("confidence-meta"),
-  previewImg:     $("preview-img"),
-  classifBadge:   $("classification-badge"),
-  scanOverlay:    $("scan-overlay"),
+  viewerFilename:  $("viewer-filename"),
+  confidenceMeta:  $("confidence-meta"),
+  previewImg:      $("preview-img"),
+  classifBadge:    $("classification-badge"),
+  scanOverlay:     $("scan-overlay"),
   // Results
-  resPlaceholder: $("results-placeholder"),
-  resLoading:     $("results-loading"),
-  resError:       $("results-error"),
-  resContent:     $("results-content"),
-  resClassBlock:  $("res-classification-block"),
-  resClassVal:    $("res-classification"),
-  resConfPct:     $("res-confidence-pct"),
-  resConfFill:    $("res-confidence-fill"),
-  resSummary:     $("res-summary"),
-  resDefectsWrap: $("res-defects-wrap"),
-  resDefectCount: $("res-defect-count"),
-  resDefectsList: $("res-defects-list"),
-  resRecommend:   $("res-recommendation"),
+  resPlaceholder:  $("results-placeholder"),
+  resLoading:      $("results-loading"),
+  resError:        $("results-error"),
+  resContent:      $("results-content"),
+  resClassBlock:   $("res-classification-block"),
+  resClassVal:     $("res-classification"),
+  resConfPct:      $("res-confidence-pct"),
+  resConfFill:     $("res-confidence-fill"),
+  resSummary:      $("res-summary"),
+  resDefectsWrap:  $("res-defects-wrap"),
+  resDefectCount:  $("res-defect-count"),
+  resDefectsList:  $("res-defects-list"),
+  resRecommend:    $("res-recommendation"),
 };
 
 /* ═══════════════════════════════════════
-   GOTRUE AUTH — direct API calls
+   GOTRUE API
 ═══════════════════════════════════════ */
-
 const IDENTITY_URL = "/.netlify/identity";
 
-/** Sign in with email + password */
+/** Standard email + password login */
 async function apiLogin(email, password) {
   const res = await fetch(`${IDENTITY_URL}/token`, {
-    method: "POST",
+    method:  "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "password",
-      username:   email,
-      password:   password,
-    }),
+    body:    new URLSearchParams({ grant_type: "password", username: email, password }),
   });
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error_description || data.msg || "Login failed");
-  return data; // { access_token, refresh_token, expires_in, ... }
+  if (!res.ok) {
+    throw new Error(data.error_description || data.msg || "Invalid email or password.");
+  }
+  return data; // { access_token, refresh_token, expires_in }
 }
 
-/** Register a new account */
-async function apiSignup(email, password) {
-  const res = await fetch(`${IDENTITY_URL}/signup`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password }),
+/**
+ * Accept an invite token and set a password.
+ * The invite_token acts as a short-lived JWT — we send it as the Bearer token
+ * and PUT a new password onto the user account.
+ */
+async function apiAcceptInvite(inviteToken, password) {
+  const res = await fetch(`${IDENTITY_URL}/user`, {
+    method:  "PUT",
+    headers: {
+      "Content-Type":  "application/json",
+      "Authorization": `Bearer ${inviteToken}`,
+    },
+    body: JSON.stringify({ password }),
   });
   const data = await res.json();
-  if (!res.ok) throw new Error(data.msg || data.error_description || "Registration failed");
-  return data;
+  if (!res.ok) {
+    throw new Error(data.msg || data.error_description || "Failed to activate account.");
+  }
+  return data; // user object { email, ... }
 }
 
-/** Silently refresh the access token */
-async function apiRefreshToken(refreshToken) {
-  const res = await fetch(`${IDENTITY_URL}/token`, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type:    "refresh_token",
-      refresh_token: refreshToken,
-    }),
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error("Session expired — please log in again");
-  return data;
-}
-
-/** Returns a valid access token, refreshing if needed */
-async function getValidToken() {
-  // Decode JWT expiry without a library
+/** Decode a JWT payload (no verification — client-side only) */
+function decodeJwtPayload(token) {
   try {
-    const payload    = JSON.parse(atob(state.accessToken.split(".")[1]));
-    const expiresAt  = payload.exp * 1000;
-    const bufferMs   = 60_000; // refresh 1 min before expiry
-    if (Date.now() < expiresAt - bufferMs) {
-      return state.accessToken; // still valid
+    return JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+  } catch {
+    return null;
+  }
+}
+
+/** Refresh the access token silently */
+async function apiRefreshToken(rt) {
+  const res = await fetch(`${IDENTITY_URL}/token`, {
+    method:  "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body:    new URLSearchParams({ grant_type: "refresh_token", refresh_token: rt }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error("Session expired — please sign in again.");
+  return data;
+}
+
+/** Return a valid access token, refreshing if near expiry */
+async function getValidToken() {
+  try {
+    const payload = decodeJwtPayload(state.accessToken);
+    if (payload && Date.now() < payload.exp * 1000 - 60_000) {
+      return state.accessToken; // still fresh
     }
-  } catch (_) { /* malformed token — try refresh anyway */ }
+  } catch (_) { /* fall through to refresh */ }
 
   const data = await apiRefreshToken(state.refreshToken);
   state.accessToken  = data.access_token;
@@ -151,77 +162,52 @@ async function getValidToken() {
 }
 
 /* ═══════════════════════════════════════
-   SESSION PERSISTENCE (sessionStorage)
+   SESSION  (sessionStorage)
 ═══════════════════════════════════════ */
-
 function saveSession() {
-  sessionStorage.setItem("vc_at",  state.accessToken  || "");
-  sessionStorage.setItem("vc_rt",  state.refreshToken || "");
-  sessionStorage.setItem("vc_em",  state.userEmail    || "");
+  sessionStorage.setItem("vc_at", state.accessToken  || "");
+  sessionStorage.setItem("vc_rt", state.refreshToken || "");
+  sessionStorage.setItem("vc_em", state.userEmail    || "");
 }
-
 function loadSession() {
-  state.accessToken  = sessionStorage.getItem("vc_at")  || null;
-  state.refreshToken = sessionStorage.getItem("vc_rt")  || null;
-  state.userEmail    = sessionStorage.getItem("vc_em")  || null;
+  state.accessToken  = sessionStorage.getItem("vc_at") || null;
+  state.refreshToken = sessionStorage.getItem("vc_rt") || null;
+  state.userEmail    = sessionStorage.getItem("vc_em") || null;
 }
-
 function clearSession() {
-  sessionStorage.removeItem("vc_at");
-  sessionStorage.removeItem("vc_rt");
-  sessionStorage.removeItem("vc_em");
-  state.accessToken  = null;
-  state.refreshToken = null;
-  state.userEmail    = null;
+  ["vc_at","vc_rt","vc_em"].forEach((k) => sessionStorage.removeItem(k));
+  state.accessToken = state.refreshToken = state.userEmail = null;
 }
 
 /* ═══════════════════════════════════════
-   AUTH UI
+   AUTH UI HELPERS
 ═══════════════════════════════════════ */
-
 function showAlert(msg, type = "error") {
-  el.authAlert.textContent = msg;
-  el.authAlert.className   = `auth-alert auth-alert--${type}`;
+  el.authAlert.innerHTML = msg;
+  el.authAlert.className = `auth-alert auth-alert--${type}`;
 }
-
 function clearAlert() {
-  el.authAlert.className = "auth-alert hidden";
+  el.authAlert.className   = "auth-alert hidden";
   el.authAlert.textContent = "";
 }
-
-function setSubmitLoading(btn, loading) {
-  const label   = btn.querySelector(".btn-label");
-  const spinner = btn.querySelector(".btn-spinner");
-  btn.disabled  = loading;
-  label.classList.toggle("hidden",  loading);
-  spinner.classList.toggle("hidden", !loading);
+function setLoading(btn, loading) {
+  btn.disabled = loading;
+  btn.querySelector(".btn-label").classList.toggle("hidden",  loading);
+  btn.querySelector(".btn-spinner").classList.toggle("hidden", !loading);
 }
 
-// Tab switching
-el.tabBtns.forEach((btn) => {
-  btn.addEventListener("click", () => {
-    el.tabBtns.forEach((b) => b.classList.remove("active"));
-    btn.classList.add("active");
-    clearAlert();
-    const tab = btn.dataset.tab;
-    el.tabLogin.classList.toggle("hidden",    tab !== "login");
-    el.tabRegister.classList.toggle("hidden", tab !== "register");
-  });
-});
+/* Enter-key support */
+el.loginPassword.addEventListener("keydown", (e) => e.key === "Enter" && el.loginSubmit.click());
+el.inviteConfirm.addEventListener("keydown", (e) => e.key === "Enter" && el.inviteSubmit.click());
 
-// Enter key submits active form
-el.loginPassword.addEventListener("keydown",  (e) => e.key === "Enter" && el.loginSubmit.click());
-el.regConfirm.addEventListener("keydown",     (e) => e.key === "Enter" && el.regSubmit.click());
-
-// ── LOGIN ──
+/* ─── LOGIN SUBMIT ─── */
 el.loginSubmit.addEventListener("click", async () => {
   clearAlert();
   const email    = el.loginEmail.value.trim();
   const password = el.loginPassword.value;
-
   if (!email || !password) { showAlert("Please enter your email and password."); return; }
 
-  setSubmitLoading(el.loginSubmit, true);
+  setLoading(el.loginSubmit, true);
   try {
     const data         = await apiLogin(email, password);
     state.accessToken  = data.access_token;
@@ -232,68 +218,91 @@ el.loginSubmit.addEventListener("click", async () => {
   } catch (err) {
     showAlert(err.message);
   } finally {
-    setSubmitLoading(el.loginSubmit, false);
+    setLoading(el.loginSubmit, false);
   }
 });
 
-// ── REGISTER ──
-el.regSubmit.addEventListener("click", async () => {
+/* ─── ACCEPT INVITE SUBMIT ─── */
+el.inviteSubmit.addEventListener("click", async () => {
   clearAlert();
-  const email    = el.regEmail.value.trim();
-  const password = el.regPassword.value;
-  const confirm  = el.regConfirm.value;
+  const password = el.invitePassword.value;
+  const confirm  = el.inviteConfirm.value;
+  const token    = el.inviteSubmit.dataset.inviteToken;
 
-  if (!email || !password)        { showAlert("Please fill in all fields."); return; }
-  if (password.length < 8)        { showAlert("Password must be at least 8 characters."); return; }
-  if (password !== confirm)       { showAlert("Passwords do not match."); return; }
+  if (!password)              { showAlert("Please choose a password."); return; }
+  if (password.length < 8)   { showAlert("Password must be at least 8 characters."); return; }
+  if (password !== confirm)   { showAlert("Passwords do not match."); return; }
 
-  setSubmitLoading(el.regSubmit, true);
+  setLoading(el.inviteSubmit, true);
   try {
-    await apiSignup(email, password);
-    showAlert(
-      "✓ Account created! Check your email to confirm your address, then sign in.",
-      "success"
-    );
-    // Switch to login tab
-    el.tabBtns[0].click();
-    el.loginEmail.value = email;
+    // Step 1 — Set password using the invite token
+    const user = await apiAcceptInvite(token, password);
+    const email = user.email;
+
+    // Step 2 — Clear the invite token from the URL (clean up hash)
+    history.replaceState(null, "", window.location.pathname);
+
+    // Step 3 — Log in with the new password
+    const session      = await apiLogin(email, password);
+    state.accessToken  = session.access_token;
+    state.refreshToken = session.refresh_token;
+    state.userEmail    = email;
+    saveSession();
+    enterApp();
+
   } catch (err) {
     showAlert(err.message);
   } finally {
-    setSubmitLoading(el.regSubmit, false);
+    setLoading(el.inviteSubmit, false);
   }
 });
 
-// ── LOGOUT ──
+/* ─── LOGOUT ─── */
 el.logoutBtn.addEventListener("click", () => {
   clearSession();
-  // Clear app state
   state.images.forEach((img) => URL.revokeObjectURL(img.url));
-  state.images    = [];
-  state.results   = {};
-  state.analyzing = {};
-  state.activeId  = null;
-  el.app.classList.add("hidden");
-  el.loginGate.classList.remove("hidden");
+  Object.assign(state, { images: [], results: {}, analyzing: {}, activeId: null });
+  show(el.loginGate);
+  hide(el.app);
   updateDropZoneVisibility();
 });
 
 function enterApp() {
-  el.loginGate.classList.add("hidden");
-  el.app.classList.remove("hidden");
+  hide(el.loginGate);
+  show(el.app);
   el.userInfo.textContent = state.userEmail || "";
   updateDropZoneVisibility();
   renderSidebar();
 }
 
 /* ═══════════════════════════════════════
-   BOOT — restore session on page load
+   BOOT — check URL for invite token, else restore session
 ═══════════════════════════════════════ */
-
 (function boot() {
+  // Parse URL hash: #invite_token=XXX  (Netlify appends this to the invite link)
+  const hash        = window.location.hash.slice(1); // strip leading #
+  const params      = new URLSearchParams(hash);
+  const inviteToken = params.get("invite_token");
+
+  if (inviteToken) {
+    // ── Show the invite acceptance screen
+    hide(el.screenLogin);
+    show(el.screenInvite);
+
+    // Decode email from the JWT payload so user can see it
+    const payload = decodeJwtPayload(inviteToken);
+    if (payload?.email) {
+      el.inviteEmail.value = payload.email;
+    }
+
+    // Store token on the submit button for use in click handler
+    el.inviteSubmit.dataset.inviteToken = inviteToken;
+    return; // don't check for an existing session
+  }
+
+  // ── No invite token — try to restore a previous session
   loadSession();
   if (state.accessToken && state.refreshToken) {
-    // Validate / refresh silently before entering app
     apiRefreshToken(state.refreshToken)
       .then((data) => {
         state.accessToken  = data.access_token;
@@ -301,25 +310,17 @@ function enterApp() {
         saveSession();
         enterApp();
       })
-      .catch(() => {
-        // Session invalid — show login
-        clearSession();
-      });
+      .catch(() => clearSession()); // session invalid, stay on login screen
   }
-  // If no session, login gate is already visible by default
 })();
 
 /* ═══════════════════════════════════════
    FILE HANDLING
 ═══════════════════════════════════════ */
-
 el.addBtn.addEventListener("click",   () => el.fileInput.click());
 el.dropZone.addEventListener("click", () => el.fileInput.click());
 
-el.fileInput.addEventListener("change", (e) => {
-  addImages(e.target.files);
-  e.target.value = "";
-});
+el.fileInput.addEventListener("change", (e) => { addImages(e.target.files); e.target.value = ""; });
 
 el.dropZone.addEventListener("dragover",  (e) => { e.preventDefault(); el.dropZone.classList.add("drag-over"); });
 el.dropZone.addEventListener("dragleave", ()  => el.dropZone.classList.remove("drag-over"));
@@ -330,7 +331,7 @@ el.dropZone.addEventListener("drop", (e) => {
 });
 
 document.addEventListener("dragover", (e) => e.preventDefault());
-document.addEventListener("drop", (e) => {
+document.addEventListener("drop",     (e) => {
   e.preventDefault();
   if (state.accessToken) addImages(e.dataTransfer.files);
 });
@@ -338,14 +339,12 @@ document.addEventListener("drop", (e) => {
 function addImages(fileList) {
   const files = Array.from(fileList).filter((f) => f.type.startsWith("image/"));
   if (!files.length) return;
-
   const newImgs = files.map((file) => ({
     id:   `${Date.now()}-${Math.random().toString(36).slice(2)}`,
     file,
     url:  URL.createObjectURL(file),
     name: file.name,
   }));
-
   newImgs.forEach((img) => state.images.push(img));
   setActive(newImgs[0].id);
   renderSidebar();
@@ -371,7 +370,6 @@ function removeImage(id) {
 /* ═══════════════════════════════════════
    ANALYSIS
 ═══════════════════════════════════════ */
-
 async function toBase64(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -393,12 +391,9 @@ async function analyzeImage(imgObj) {
     const mediaType   = imgObj.file.type || "image/jpeg";
 
     const response = await fetch("/.netlify/functions/analyze", {
-      method: "POST",
-      headers: {
-        "Content-Type":  "application/json",
-        "Authorization": `Bearer ${token}`,
-      },
-      body: JSON.stringify({ imageBase64, mediaType }),
+      method:  "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+      body:    JSON.stringify({ imageBase64, mediaType }),
     });
 
     const data = await response.json();
@@ -418,7 +413,6 @@ async function analyzeImage(imgObj) {
 /* ═══════════════════════════════════════
    ACTIVE IMAGE
 ═══════════════════════════════════════ */
-
 function setActive(id) {
   state.activeId = id;
   renderSidebar();
@@ -429,7 +423,6 @@ function setActive(id) {
 /* ═══════════════════════════════════════
    RENDER — SIDEBAR
 ═══════════════════════════════════════ */
-
 function renderSidebar() {
   el.imageCount.textContent = state.images.length;
   el.imageList.innerHTML    = "";
@@ -440,8 +433,7 @@ function renderSidebarItem(id) {
   const existing = el.imageList.querySelector(`[data-id="${id}"]`);
   const img      = state.images.find((i) => i.id === id);
   if (!img) return;
-  const newItem  = buildSidebarItem(img);
-  if (existing) existing.replaceWith(newItem);
+  if (existing) existing.replaceWith(buildSidebarItem(img));
 }
 
 function buildSidebarItem(img) {
@@ -453,13 +445,13 @@ function buildSidebarItem(img) {
   div.dataset.id = img.id;
 
   let statusHtml;
-  if (isLoad)              statusHtml = `<span class="sidebar-status status-scanning">⟳ Scanning...</span>`;
+  if (isLoad)                 statusHtml = `<span class="sidebar-status status-scanning">⟳ Scanning...</span>`;
   else if (res?.classification) {
     const c = res.classification === "FAULTY" ? "faulty" : "ok";
     statusHtml = `<span class="sidebar-status status-${c}">● ${res.classification}</span>`;
   }
-  else if (res?.error)     statusHtml = `<span class="sidebar-status status-error">✕ Error</span>`;
-  else                     statusHtml = `<span class="sidebar-status status-scanning">— Pending</span>`;
+  else if (res?.error)        statusHtml = `<span class="sidebar-status status-error">✕ Error</span>`;
+  else                        statusHtml = `<span class="sidebar-status status-scanning">— Pending</span>`;
 
   div.innerHTML = `
     <img class="sidebar-thumb" src="${img.url}" alt="${escapeHtml(img.name)}" />
@@ -469,7 +461,6 @@ function buildSidebarItem(img) {
     </div>
     <button class="sidebar-remove" title="Remove">✕</button>
   `;
-
   div.addEventListener("click", () => setActive(img.id));
   div.querySelector(".sidebar-remove").addEventListener("click", (e) => {
     e.stopPropagation(); removeImage(img.id);
@@ -480,7 +471,6 @@ function buildSidebarItem(img) {
 /* ═══════════════════════════════════════
    RENDER — VIEWER
 ═══════════════════════════════════════ */
-
 function renderViewer() {
   const img    = state.images.find((i) => i.id === state.activeId);
   const res    = state.activeId ? state.results[state.activeId]   : null;
@@ -517,7 +507,6 @@ function renderViewer() {
 /* ═══════════════════════════════════════
    RENDER — RESULTS
 ═══════════════════════════════════════ */
-
 function renderResults() {
   const res    = state.activeId ? state.results[state.activeId]   : null;
   const isLoad = state.activeId ? state.analyzing[state.activeId] : false;
@@ -540,7 +529,7 @@ function renderResults() {
   el.resConfFill.style.width = "0%";
   requestAnimationFrame(() => setTimeout(() => { el.resConfFill.style.width = `${res.confidence}%`; }, 50));
 
-  el.resSummary.textContent   = res.summary || "";
+  el.resSummary.textContent   = res.summary       || "";
   el.resRecommend.textContent = res.recommendation || "";
 
   if (res.defects?.length > 0) {
@@ -570,7 +559,6 @@ function buildDefectCard(d) {
 /* ═══════════════════════════════════════
    HELPERS
 ═══════════════════════════════════════ */
-
 function show(e)  { e.classList.remove("hidden"); }
 function hide(e)  { e.classList.add("hidden"); }
 

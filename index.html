@@ -20,54 +20,63 @@
         </div>
       </div>
 
-      <!-- Tab switcher -->
-      <div class="auth-tabs">
-        <button class="auth-tab active" data-tab="login">SIGN IN</button>
-        <button class="auth-tab" data-tab="register">REGISTER</button>
-      </div>
-
-      <!-- Alert box -->
+      <!-- Shared alert box -->
       <div id="auth-alert" class="auth-alert hidden"></div>
 
-      <!-- Login form -->
-      <div id="tab-login" class="auth-form">
+      <!-- ── SCREEN 1: Login (default) -->
+      <div id="screen-login" class="auth-screen">
+        <p class="auth-desc">
+          Access is by invitation only.<br/>
+          Sign in with your credentials below.
+        </p>
         <div class="field-group">
           <label class="field-label">EMAIL</label>
-          <input id="login-email" type="email" class="auth-input" placeholder="you@example.com" autocomplete="email" />
+          <input id="login-email" type="email" class="auth-input"
+            placeholder="you@example.com" autocomplete="email" />
         </div>
         <div class="field-group">
           <label class="field-label">PASSWORD</label>
-          <input id="login-password" type="password" class="auth-input" placeholder="••••••••" autocomplete="current-password" />
+          <input id="login-password" type="password" class="auth-input"
+            placeholder="••••••••" autocomplete="current-password" />
         </div>
         <button id="login-submit" class="auth-submit-btn">
           <span class="btn-label">→ SIGN IN</span>
           <span class="btn-spinner hidden"></span>
         </button>
+        <div class="login-footer">
+          Secured by Netlify Identity · Powered by Claude AI<br/>
+          <span class="muted">No account? Contact your administrator for an invitation.</span>
+        </div>
       </div>
 
-      <!-- Register form -->
-      <div id="tab-register" class="auth-form hidden">
+      <!-- ── SCREEN 2: Accept Invite (shown when #invite_token in URL) -->
+      <div id="screen-invite" class="auth-screen hidden">
+        <div class="invite-badge">✉ INVITATION</div>
+        <p class="auth-desc">You've been invited. Set a password to activate your account.</p>
         <div class="field-group">
           <label class="field-label">EMAIL</label>
-          <input id="reg-email" type="email" class="auth-input" placeholder="you@example.com" autocomplete="email" />
+          <input id="invite-email" type="text" class="auth-input" disabled
+            placeholder="Loading..." />
         </div>
         <div class="field-group">
-          <label class="field-label">PASSWORD</label>
-          <input id="reg-password" type="password" class="auth-input" placeholder="min. 8 characters" autocomplete="new-password" />
+          <label class="field-label">NEW PASSWORD</label>
+          <input id="invite-password" type="password" class="auth-input"
+            placeholder="min. 8 characters" autocomplete="new-password" />
         </div>
         <div class="field-group">
           <label class="field-label">CONFIRM PASSWORD</label>
-          <input id="reg-confirm" type="password" class="auth-input" placeholder="repeat password" autocomplete="new-password" />
+          <input id="invite-confirm" type="password" class="auth-input"
+            placeholder="repeat password" autocomplete="new-password" />
         </div>
-        <button id="reg-submit" class="auth-submit-btn">
-          <span class="btn-label">→ CREATE ACCOUNT</span>
+        <button id="invite-submit" class="auth-submit-btn">
+          <span class="btn-label">→ ACTIVATE ACCOUNT</span>
           <span class="btn-spinner hidden"></span>
         </button>
+        <div class="login-footer">
+          Secured by Netlify Identity · Powered by Claude AI
+        </div>
       </div>
 
-      <div class="login-footer">
-        Secured by Netlify Identity · Powered by Claude AI
-      </div>
     </div>
   </div>
 
@@ -92,7 +101,6 @@
     </header>
 
     <div id="main-layout">
-
       <aside id="sidebar">
         <div class="sidebar-header">IMAGE QUEUE (<span id="image-count">0</span>)</div>
         <div id="image-list"></div>
@@ -103,19 +111,17 @@
       </aside>
 
       <main id="main-content">
-
         <div id="drop-zone">
           <div class="drop-icon">⬡</div>
           <div class="drop-title">DROP IMAGES TO BEGIN ANALYSIS</div>
           <div class="drop-sub">or click to select files</div>
           <div class="drop-formats">
-            SUPPORTED FORMATS: JPG · PNG · WEBP · BMP<br />
+            SUPPORTED FORMATS: JPG · PNG · WEBP · BMP<br/>
             AI-POWERED DEFECT CLASSIFICATION
           </div>
         </div>
 
         <div id="workspace" class="hidden">
-
           <div id="viewer-panel">
             <div class="panel-header">
               <span>IMAGE VIEWER</span>
@@ -141,7 +147,9 @@
           <div id="results-panel">
             <div class="panel-header">ANALYSIS REPORT</div>
             <div id="results-body">
-              <div id="results-placeholder" class="results-placeholder">Select an image to view analysis results</div>
+              <div id="results-placeholder" class="results-placeholder">
+                Select an image to view analysis results
+              </div>
               <div id="results-loading" class="hidden">
                 <div class="log-line">▶ Initializing vision model...</div>
                 <div class="log-line">▶ Loading image data...</div>
@@ -178,7 +186,6 @@
               </div>
             </div>
           </div>
-
         </div>
       </main>
     </div>
