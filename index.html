@@ -5,14 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>VISIONCORE — Defect Analysis System</title>
   <link rel="stylesheet" href="styles.css" />
-  <!-- Netlify Identity Widget -->
-  <script src="https://identity.netlify.com/v1/netlify-identity-widget.js"></script>
 </head>
 <body>
 
-  <!-- ═══════════════════════════════════════ LOGIN GATE -->
+  <!-- ══════════════════════════════════ LOGIN GATE -->
   <div id="login-gate">
     <div class="login-card">
+
       <div class="login-logo">
         <div class="login-logo-icon">⬡</div>
         <div>
@@ -21,14 +20,50 @@
         </div>
       </div>
 
-      <p class="login-desc">
-        AI-powered surface defect classification.<br />
-        Sign in to begin analysis.
-      </p>
+      <!-- Tab switcher -->
+      <div class="auth-tabs">
+        <button class="auth-tab active" data-tab="login">SIGN IN</button>
+        <button class="auth-tab" data-tab="register">REGISTER</button>
+      </div>
 
-      <button id="login-btn" class="login-btn">
-        <span class="login-btn-icon">→</span> SIGN IN / REGISTER
-      </button>
+      <!-- Alert box -->
+      <div id="auth-alert" class="auth-alert hidden"></div>
+
+      <!-- Login form -->
+      <div id="tab-login" class="auth-form">
+        <div class="field-group">
+          <label class="field-label">EMAIL</label>
+          <input id="login-email" type="email" class="auth-input" placeholder="you@example.com" autocomplete="email" />
+        </div>
+        <div class="field-group">
+          <label class="field-label">PASSWORD</label>
+          <input id="login-password" type="password" class="auth-input" placeholder="••••••••" autocomplete="current-password" />
+        </div>
+        <button id="login-submit" class="auth-submit-btn">
+          <span class="btn-label">→ SIGN IN</span>
+          <span class="btn-spinner hidden"></span>
+        </button>
+      </div>
+
+      <!-- Register form -->
+      <div id="tab-register" class="auth-form hidden">
+        <div class="field-group">
+          <label class="field-label">EMAIL</label>
+          <input id="reg-email" type="email" class="auth-input" placeholder="you@example.com" autocomplete="email" />
+        </div>
+        <div class="field-group">
+          <label class="field-label">PASSWORD</label>
+          <input id="reg-password" type="password" class="auth-input" placeholder="min. 8 characters" autocomplete="new-password" />
+        </div>
+        <div class="field-group">
+          <label class="field-label">CONFIRM PASSWORD</label>
+          <input id="reg-confirm" type="password" class="auth-input" placeholder="repeat password" autocomplete="new-password" />
+        </div>
+        <button id="reg-submit" class="auth-submit-btn">
+          <span class="btn-label">→ CREATE ACCOUNT</span>
+          <span class="btn-spinner hidden"></span>
+        </button>
+      </div>
 
       <div class="login-footer">
         Secured by Netlify Identity · Powered by Claude AI
@@ -36,10 +71,9 @@
     </div>
   </div>
 
-  <!-- ═══════════════════════════════════════ MAIN APP (hidden until login) -->
+  <!-- ══════════════════════════════════ MAIN APP -->
   <div id="app" class="hidden">
 
-    <!-- HEADER -->
     <header id="app-header">
       <div class="logo-block">
         <div class="logo-icon">⬡</div>
@@ -53,18 +87,14 @@
         <span>AI MODEL: CLAUDE SONNET</span>
         <span>QUEUE: <span id="queue-count">0</span></span>
         <span id="user-info" class="user-info"></span>
-        <button id="logout-btn" class="logout-btn" title="Sign out">⏻ SIGN OUT</button>
+        <button id="logout-btn" class="logout-btn">⏻ SIGN OUT</button>
       </div>
     </header>
 
-    <!-- MAIN LAYOUT -->
     <div id="main-layout">
 
-      <!-- SIDEBAR -->
       <aside id="sidebar">
-        <div class="sidebar-header">
-          IMAGE QUEUE (<span id="image-count">0</span>)
-        </div>
+        <div class="sidebar-header">IMAGE QUEUE (<span id="image-count">0</span>)</div>
         <div id="image-list"></div>
         <div class="sidebar-footer">
           <button id="add-btn" class="add-button">+ Add Images</button>
@@ -72,10 +102,8 @@
         </div>
       </aside>
 
-      <!-- MAIN CONTENT -->
       <main id="main-content">
 
-        <!-- DROP ZONE -->
         <div id="drop-zone">
           <div class="drop-icon">⬡</div>
           <div class="drop-title">DROP IMAGES TO BEGIN ANALYSIS</div>
@@ -86,10 +114,8 @@
           </div>
         </div>
 
-        <!-- WORKSPACE -->
         <div id="workspace" class="hidden">
 
-          <!-- Image Viewer -->
           <div id="viewer-panel">
             <div class="panel-header">
               <span>IMAGE VIEWER</span>
@@ -112,13 +138,10 @@
             </div>
           </div>
 
-          <!-- Results Panel -->
           <div id="results-panel">
             <div class="panel-header">ANALYSIS REPORT</div>
             <div id="results-body">
-              <div id="results-placeholder" class="results-placeholder">
-                Select an image to view analysis results
-              </div>
+              <div id="results-placeholder" class="results-placeholder">Select an image to view analysis results</div>
               <div id="results-loading" class="hidden">
                 <div class="log-line">▶ Initializing vision model...</div>
                 <div class="log-line">▶ Loading image data...</div>
@@ -127,7 +150,6 @@
               </div>
               <div id="results-error" class="hidden"></div>
               <div id="results-content" class="hidden">
-                <!-- Classification -->
                 <div id="res-classification-block" class="classification-block">
                   <div class="section-label">CLASSIFICATION</div>
                   <div id="res-classification" class="classification-value"></div>
@@ -141,17 +163,14 @@
                     </div>
                   </div>
                 </div>
-                <!-- Summary -->
                 <div class="result-section">
                   <div class="section-label">SUMMARY</div>
                   <p id="res-summary" class="result-text"></p>
                 </div>
-                <!-- Defects -->
                 <div id="res-defects-wrap" class="result-section hidden">
                   <div class="section-label">DETECTED DEFECTS (<span id="res-defect-count">0</span>)</div>
                   <div id="res-defects-list"></div>
                 </div>
-                <!-- Recommendation -->
                 <div class="result-section recommendation-block">
                   <div class="section-label">RECOMMENDATION</div>
                   <div id="res-recommendation" class="result-text"></div>
@@ -160,11 +179,10 @@
             </div>
           </div>
 
-        </div><!-- /workspace -->
+        </div>
       </main>
     </div>
-
-  </div><!-- /app -->
+  </div>
 
   <script src="app.js"></script>
 </body>
