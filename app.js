@@ -112,35 +112,37 @@ async function apiLogin(email, password) {
  * and PUT a new password onto the user account.
  */
 /**
- * Two-step invite acceptance:
+ * Two-step invite acceptance (Netlify GoTrue):
  *
- * Step 1 — POST /verify?token=TOKEN&type=invite  (empty body)
- *           GoTrue confirms the user and returns a session
- *           { access_token, refresh_token, user: { email } }
+ * Step 1 — POST /verify   body: { token, type: "invite" }
+ *           Returns a session { access_token, refresh_token, user }
  *
- * Step 2 — PUT /user  (Bearer access_token from step 1)
- *           Body: { password }
- *           Sets the user's password
- *
- * Returns the step-1 session so the caller can log the user straight in.
+ * Step 2 — PUT /user      Bearer: access_token   body: { password }
+ *           Sets the user password
  */
 async function apiAcceptInvite(inviteToken, password) {
-  // ── Step 1: exchange invite token for a session ──
-  const verifyUrl = `${IDENTITY_URL}/verify?token=${encodeURIComponent(inviteToken)}&type=invite`;
-  const verifyRes = await fetch(verifyUrl, {
+  // ── Step 1: verify invite token — body only, no query params ──
+  console.log("[invite] Step 1: POST /verify  token:", inviteToken.slice(0,8) + "...");
+  const verifyRes = await fetch(`${IDENTITY_URL}/verify`, {
     method:  "POST",
     headers: { "Content-Type": "application/json" },
-    body:    JSON.stringify({}),
+    body:    JSON.stringify({ token: inviteToken, type: "invite" }),
   });
+
   const session = await verifyRes.json();
+  console.log("[invite] Step 1 status:", verifyRes.status, session);
+
   if (!verifyRes.ok) {
-    throw new Error(
-      session.msg || session.error_description ||
-      "Invite token invalid or expired. Please request a new invitation."
-    );
+    const msg = session.msg || session.error_description || session.error || JSON.stringify(session);
+    // 422 = token already used / expired
+    if (verifyRes.status === 422) {
+      throw new Error("This invite link has already been used or has expired. Please ask your administrator to send a new invitation.");
+    }
+    throw new Error(`Verification failed (${verifyRes.status}): ${msg}`);
   }
 
-  // ── Step 2: set the password using the session access token ──
+  // ── Step 2: set password with the session token ──
+  console.log("[invite] Step 2: PUT /user  email:", session.user?.email);
   const userRes = await fetch(`${IDENTITY_URL}/user`, {
     method:  "PUT",
     headers: {
@@ -149,12 +151,15 @@ async function apiAcceptInvite(inviteToken, password) {
     },
     body: JSON.stringify({ password }),
   });
+
   const user = await userRes.json();
+  console.log("[invite] Step 2 status:", userRes.status, user);
+
   if (!userRes.ok) {
-    throw new Error(user.msg || user.error_description || "Failed to set password.");
+    const msg = user.msg || user.error_description || JSON.stringify(user);
+    throw new Error(`Failed to set password (${userRes.status}): ${msg}`);
   }
 
-  // Return the session (access_token, refresh_token, user.email)
   return { ...session, user };
 }
 
