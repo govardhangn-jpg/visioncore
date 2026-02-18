@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VISIONCORE — Defect Analysis System</title>
+  <link rel="stylesheet" href="styles.css" />
+  <!-- Netlify Identity Widget -->
+  <script src="https://identity.netlify.com/v1/netlify-identity-widget.js"></script>
+</head>
+<body>
+
+  <!-- ═══════════════════════════════════════ LOGIN GATE -->
+  <div id="login-gate">
+    <div class="login-card">
+      <div class="login-logo">
+        <div class="login-logo-icon">⬡</div>
+        <div>
+          <div class="login-logo-title">VISIONCORE</div>
+          <div class="login-logo-sub">DEFECT ANALYSIS SYSTEM v2.1</div>
+        </div>
+      </div>
+
+      <p class="login-desc">
+        AI-powered surface defect classification.<br />
+        Sign in to begin analysis.
+      </p>
+
+      <button id="login-btn" class="login-btn">
+        <span class="login-btn-icon">→</span> SIGN IN / REGISTER
+      </button>
+
+      <div class="login-footer">
+        Secured by Netlify Identity · Powered by Claude AI
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════ MAIN APP (hidden until login) -->
+  <div id="app" class="hidden">
+
+    <!-- HEADER -->
+    <header id="app-header">
+      <div class="logo-block">
+        <div class="logo-icon">⬡</div>
+        <div>
+          <div class="logo-title">VISIONCORE</div>
+          <div class="logo-sub">DEFECT ANALYSIS SYSTEM v2.1</div>
+        </div>
+      </div>
+      <div class="header-meta">
+        <span class="status-dot">● ONLINE</span>
+        <span>AI MODEL: CLAUDE SONNET</span>
+        <span>QUEUE: <span id="queue-count">0</span></span>
+        <span id="user-info" class="user-info"></span>
+        <button id="logout-btn" class="logout-btn" title="Sign out">⏻ SIGN OUT</button>
+      </div>
+    </header>
+
+    <!-- MAIN LAYOUT -->
+    <div id="main-layout">
+
+      <!-- SIDEBAR -->
+      <aside id="sidebar">
+        <div class="sidebar-header">
+          IMAGE QUEUE (<span id="image-count">0</span>)
+        </div>
+        <div id="image-list"></div>
+        <div class="sidebar-footer">
+          <button id="add-btn" class="add-button">+ Add Images</button>
+          <input id="file-input" type="file" accept="image/*" multiple hidden />
+        </div>
+      </aside>
+
+      <!-- MAIN CONTENT -->
+      <main id="main-content">
+
+        <!-- DROP ZONE -->
+        <div id="drop-zone">
+          <div class="drop-icon">⬡</div>
+          <div class="drop-title">DROP IMAGES TO BEGIN ANALYSIS</div>
+          <div class="drop-sub">or click to select files</div>
+          <div class="drop-formats">
+            SUPPORTED FORMATS: JPG · PNG · WEBP · BMP<br />
+            AI-POWERED DEFECT CLASSIFICATION
+          </div>
+        </div>
+
+        <!-- WORKSPACE -->
+        <div id="workspace" class="hidden">
+
+          <!-- Image Viewer -->
+          <div id="viewer-panel">
+            <div class="panel-header">
+              <span>IMAGE VIEWER</span>
+              <span id="viewer-filename" class="panel-filename"></span>
+              <span id="confidence-meta" class="panel-meta"></span>
+            </div>
+            <div id="viewer-body">
+              <div id="image-container">
+                <img id="preview-img" src="" alt="Preview" />
+                <div id="classification-badge" class="hidden"></div>
+                <div id="scan-overlay" class="hidden">
+                  <div class="scan-animation">
+                    <div class="scan-line" style="animation-delay:0s"></div>
+                    <div class="scan-line" style="animation-delay:0.4s"></div>
+                    <div class="scan-line" style="animation-delay:0.8s"></div>
+                  </div>
+                  <div class="scan-label">ANALYZING...</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Results Panel -->
+          <div id="results-panel">
+            <div class="panel-header">ANALYSIS REPORT</div>
+            <div id="results-body">
+              <div id="results-placeholder" class="results-placeholder">
+                Select an image to view analysis results
+              </div>
+              <div id="results-loading" class="hidden">
+                <div class="log-line">▶ Initializing vision model...</div>
+                <div class="log-line">▶ Loading image data...</div>
+                <div class="log-line">▶ Running defect classifier...</div>
+                <div class="log-line accent">● Scanning surface anomalies...</div>
+              </div>
+              <div id="results-error" class="hidden"></div>
+              <div id="results-content" class="hidden">
+                <!-- Classification -->
+                <div id="res-classification-block" class="classification-block">
+                  <div class="section-label">CLASSIFICATION</div>
+                  <div id="res-classification" class="classification-value"></div>
+                  <div class="confidence-bar-wrap">
+                    <div class="confidence-header">
+                      <span class="section-label">CONFIDENCE</span>
+                      <span id="res-confidence-pct" class="confidence-pct"></span>
+                    </div>
+                    <div class="confidence-track">
+                      <div id="res-confidence-fill" class="confidence-fill"></div>
+                    </div>
+                  </div>
+                </div>
+                <!-- Summary -->
+                <div class="result-section">
+                  <div class="section-label">SUMMARY</div>
+                  <p id="res-summary" class="result-text"></p>
+                </div>
+                <!-- Defects -->
+                <div id="res-defects-wrap" class="result-section hidden">
+                  <div class="section-label">DETECTED DEFECTS (<span id="res-defect-count">0</span>)</div>
+                  <div id="res-defects-list"></div>
+                </div>
+                <!-- Recommendation -->
+                <div class="result-section recommendation-block">
+                  <div class="section-label">RECOMMENDATION</div>
+                  <div id="res-recommendation" class="result-text"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div><!-- /workspace -->
+      </main>
+    </div>
+
+  </div><!-- /app -->
+
+  <script src="app.js"></script>
+</body>
+</html>
