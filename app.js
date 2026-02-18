@@ -109,18 +109,19 @@ async function apiLogin(email, password) {
  * and PUT a new password onto the user account.
  */
 async function apiAcceptInvite(inviteToken, password) {
-  // Netlify invite tokens are short opaque strings (NOT JWTs).
-  // Correct endpoint: POST /verify with type:"invite"
-  // Returns a full session: { access_token, refresh_token, user: { email } }
-  const res = await fetch(`${IDENTITY_URL}/verify`, {
+  // Netlify GoTrue requires token + type as URL query params,
+  // and password in the JSON body — NOT all three in the body.
+  const url = `${IDENTITY_URL}/verify?token=${encodeURIComponent(inviteToken)}&type=invite`;
+  const res = await fetch(url, {
     method:  "POST",
     headers: { "Content-Type": "application/json" },
-    body:    JSON.stringify({ token: inviteToken, type: "invite", password }),
+    body:    JSON.stringify({ password }),
   });
   const data = await res.json();
   if (!res.ok) {
     throw new Error(data.msg || data.error_description || "Failed to activate account. The invite link may have expired.");
   }
+  // Returns: { access_token, refresh_token, token_type, expires_in, user: { email, ... } }
   return data;
 }
 
