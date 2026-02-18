@@ -17,6 +17,9 @@
 
 "use strict";
 
+// Module-level storage for the invite token (avoids dataset key-casing bugs)
+let pendingInviteToken = null;
+
 /* ═══════════════════════════════════════
    STATE
 ═══════════════════════════════════════ */
@@ -228,22 +231,29 @@ el.inviteSubmit.addEventListener("click", async () => {
   clearAlert();
   const password = el.invitePassword.value;
   const confirm  = el.inviteConfirm.value;
-  const token    = el.inviteSubmit.dataset.inviteToken;
 
-  if (!password)              { showAlert("Please choose a password."); return; }
-  if (password.length < 8)   { showAlert("Password must be at least 8 characters."); return; }
-  if (password !== confirm)   { showAlert("Passwords do not match."); return; }
+  // Read from module-level variable (never from dataset — dataset lowercases keys)
+  const token = pendingInviteToken;
+
+  if (!token) {
+    showAlert("Invite token not found. Please click the original invite link again.");
+    return;
+  }
+  if (!password)             { showAlert("Please choose a password."); return; }
+  if (password.length < 8)  { showAlert("Password must be at least 8 characters."); return; }
+  if (password !== confirm)  { showAlert("Passwords do not match."); return; }
 
   setLoading(el.inviteSubmit, true);
   try {
-    // Step 1 — Verify invite token + set password in one call
-    // Response includes access_token, refresh_token AND user.email directly
+    // Verify invite token + set password in one API call.
+    // Returns: { access_token, refresh_token, user: { email, ... } }
     const session = await apiAcceptInvite(token, password);
 
-    // Step 2 — Clear the invite token from the URL (clean up hash)
+    // Clean the invite token from the URL
     history.replaceState(null, "", window.location.pathname);
+    pendingInviteToken = null;
 
-    // Step 3 — Store session and enter app (no second login needed)
+    // Store session and enter app directly — no second login needed
     state.accessToken  = session.access_token;
     state.refreshToken = session.refresh_token;
     state.userEmail    = session.user?.email || "";
@@ -279,23 +289,29 @@ function enterApp() {
    BOOT — check URL for invite token, else restore session
 ═══════════════════════════════════════ */
 (function boot() {
-  // Parse URL hash: #invite_token=XXX  (Netlify appends this to the invite link)
-  const hash        = window.location.hash.slice(1); // strip leading #
-  const params      = new URLSearchParams(hash);
-  const inviteToken = params.get("invite_token");
+  // Netlify appends the invite token to the URL hash: #invite_token=TOKEN
+  // Try both the hash and query string in case Netlify reformats the URL.
+  const hashParams  = new URLSearchParams(window.location.hash.slice(1));
+  const queryParams = new URLSearchParams(window.location.search);
+  const inviteToken = hashParams.get("invite_token") || queryParams.get("invite_token");
 
   if (inviteToken) {
-    // ── Show the invite acceptance screen
+    // Store in module-level variable (not dataset — dataset lowercases keys)
+    pendingInviteToken = inviteToken;
+
+    // Show invite screen, hide login
     hide(el.screenLogin);
     show(el.screenInvite);
 
-    // Netlify invite tokens are opaque strings, not JWTs — cannot decode email.
-    // Email will be populated from the API response after activation.
+    // Show a visual confirmation the token was detected
     el.inviteEmail.placeholder = "Will be confirmed on activation";
+    el.inviteEmail.value = "";
 
-    // Store token on the submit button for use in click handler
-    el.inviteSubmit.dataset.inviteToken = inviteToken;
-    return; // don't check for an existing session
+    // Show token preview in email field so user knows it was detected
+    const shortToken = inviteToken.slice(0, 8) + "...";
+    el.inviteEmail.placeholder = `Token detected: ${shortToken} — email confirmed after activation`;
+
+    return; // skip session restore
   }
 
   // ── No invite token — try to restore a previous session
@@ -308,7 +324,7 @@ function enterApp() {
         saveSession();
         enterApp();
       })
-      .catch(() => clearSession()); // session invalid, stay on login screen
+      .catch(() => clearSession());
   }
 })();
 
