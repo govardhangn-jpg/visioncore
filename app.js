@@ -10,7 +10,7 @@
  * │  Admin sends invite from Netlify Dashboard → Identity → Invite users      │
  * │  User clicks email link → lands on site with #invite_token=TOKEN in URL   │
  * │  App detects token → shows "Set Password" screen                          │
- * │  User sets password → PUT /.netlify/identity/user (Bearer invite_token)   │
+ * │  User sets password → POST /.netlify/identity/verify (type:invite)        │
  * │  App immediately logs in → enter app                                      │
  * └──────────────────────────────────────────────────────────────────────────┘
  */
@@ -109,19 +109,19 @@ async function apiLogin(email, password) {
  * and PUT a new password onto the user account.
  */
 async function apiAcceptInvite(inviteToken, password) {
-  const res = await fetch(`${IDENTITY_URL}/user`, {
-    method:  "PUT",
-    headers: {
-      "Content-Type":  "application/json",
-      "Authorization": `Bearer ${inviteToken}`,
-    },
-    body: JSON.stringify({ password }),
+  // Netlify invite tokens are short opaque strings (NOT JWTs).
+  // Correct endpoint: POST /verify with type:"invite"
+  // Returns a full session: { access_token, refresh_token, user: { email } }
+  const res = await fetch(`${IDENTITY_URL}/verify`, {
+    method:  "POST",
+    headers: { "Content-Type": "application/json" },
+    body:    JSON.stringify({ token: inviteToken, type: "invite", password }),
   });
   const data = await res.json();
   if (!res.ok) {
-    throw new Error(data.msg || data.error_description || "Failed to activate account.");
+    throw new Error(data.msg || data.error_description || "Failed to activate account. The invite link may have expired.");
   }
-  return data; // user object { email, ... }
+  return data;
 }
 
 /** Decode a JWT payload (no verification — client-side only) */
@@ -235,18 +235,17 @@ el.inviteSubmit.addEventListener("click", async () => {
 
   setLoading(el.inviteSubmit, true);
   try {
-    // Step 1 — Set password using the invite token
-    const user = await apiAcceptInvite(token, password);
-    const email = user.email;
+    // Step 1 — Verify invite token + set password in one call
+    // Response includes access_token, refresh_token AND user.email directly
+    const session = await apiAcceptInvite(token, password);
 
     // Step 2 — Clear the invite token from the URL (clean up hash)
     history.replaceState(null, "", window.location.pathname);
 
-    // Step 3 — Log in with the new password
-    const session      = await apiLogin(email, password);
+    // Step 3 — Store session and enter app (no second login needed)
     state.accessToken  = session.access_token;
     state.refreshToken = session.refresh_token;
-    state.userEmail    = email;
+    state.userEmail    = session.user?.email || "";
     saveSession();
     enterApp();
 
@@ -289,11 +288,9 @@ function enterApp() {
     hide(el.screenLogin);
     show(el.screenInvite);
 
-    // Decode email from the JWT payload so user can see it
-    const payload = decodeJwtPayload(inviteToken);
-    if (payload?.email) {
-      el.inviteEmail.value = payload.email;
-    }
+    // Netlify invite tokens are opaque strings, not JWTs — cannot decode email.
+    // Email will be populated from the API response after activation.
+    el.inviteEmail.placeholder = "Will be confirmed on activation";
 
     // Store token on the submit button for use in click handler
     el.inviteSubmit.dataset.inviteToken = inviteToken;
