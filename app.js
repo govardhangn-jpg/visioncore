@@ -75,38 +75,84 @@ const el = {
 
 function initAuth() {
   const netlifyIdentity = window.netlifyIdentity;
+
+  // ── Widget failed to load (script blocked / offline)
   if (!netlifyIdentity) {
-    console.error("Netlify Identity widget not loaded.");
+    setLoginStatus("error", "Identity widget failed to load. Check your connection.");
     return;
   }
 
-  // Open login modal when button clicked
-  el.loginBtn.addEventListener("click", () => netlifyIdentity.open());
+  // ── Disable button until widget is fully initialised
+  setLoginStatus("loading", "INITIALIZING...");
 
-  // Handle successful login
+  // ── CRITICAL: handle email confirmation / password-recovery tokens
+  // Netlify appends #confirmation_token=xxx or #recovery_token=xxx to the URL
+  // after a user clicks their confirmation email. The widget must see this URL
+  // to complete registration — we call init() AFTER registering all handlers.
+  netlifyIdentity.on("init", (user) => {
+    if (user) {
+      // Already logged-in session found (e.g. page refresh)
+      handleLogin(user);
+    } else {
+      // Ready — enable the button
+      setLoginStatus("ready", "SIGN IN / REGISTER");
+    }
+  });
+
+  // ── Successful login or signup confirmation
   netlifyIdentity.on("login", (user) => {
     netlifyIdentity.close();
     handleLogin(user);
   });
 
-  // Handle logout
-  netlifyIdentity.on("logout", () => {
-    handleLogout();
+  // ── Logout
+  netlifyIdentity.on("logout", () => handleLogout());
+
+  // ── Errors (wrong password, unconfirmed email, etc.)
+  netlifyIdentity.on("error", (err) => {
+    console.error("Netlify Identity error:", err);
+    setLoginStatus("ready", "SIGN IN / REGISTER");
   });
 
-  // Init widget — checks for existing session
-  netlifyIdentity.on("init", (user) => {
-    if (user) {
-      handleLogin(user);
-    } else {
-      showLoginGate();
-    }
+  // ── Now init — widget reads the URL hash for confirmation tokens here
+  netlifyIdentity.init({ locale: "en" });
+
+  // ── Button click — safe to call open() after init fires (button is
+  //    disabled until then, so this handler won't fire prematurely)
+  el.loginBtn.addEventListener("click", () => {
+    netlifyIdentity.open("login");
   });
 
-  netlifyIdentity.init();
-
-  // Sign out button
+  // ── Sign out
   el.logoutBtn.addEventListener("click", () => netlifyIdentity.logout());
+}
+
+/**
+ * Update login button appearance.
+ * @param {"loading"|"ready"|"error"} status
+ * @param {string} label
+ */
+function setLoginStatus(status, label) {
+  const btn = el.loginBtn;
+  btn.disabled = status === "loading" || status === "error";
+
+  if (status === "loading") {
+    btn.innerHTML = `<span class="login-btn-spinner"></span> ${label}`;
+    btn.style.opacity = "0.6";
+    btn.style.cursor  = "not-allowed";
+  } else if (status === "error") {
+    btn.innerHTML = `✕ ${label}`;
+    btn.style.opacity = "0.5";
+    btn.style.cursor  = "not-allowed";
+    btn.style.borderColor = "var(--red)";
+    btn.style.color       = "var(--red)";
+  } else {
+    btn.innerHTML = `<span class="login-btn-icon">→</span> ${label}`;
+    btn.style.opacity = "1";
+    btn.style.cursor  = "pointer";
+    btn.style.borderColor = "";
+    btn.style.color       = "";
+  }
 }
 
 async function handleLogin(user) {
@@ -142,6 +188,8 @@ function handleLogout() {
 function showLoginGate() {
   el.app.classList.add("hidden");
   el.loginGate.classList.remove("hidden");
+  // Re-enable the button when returning to login screen
+  setLoginStatus("ready", "SIGN IN / REGISTER");
 }
 
 function showApp() {

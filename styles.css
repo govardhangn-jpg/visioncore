@@ -156,6 +156,20 @@ html, body {
 
 .login-btn-icon { font-size: 18px; }
 
+.login-btn-spinner {
+  display: inline-block;
+  width: 14px; height: 14px;
+  border: 2px solid var(--blue-dim);
+  border-top-color: var(--blue);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  vertical-align: middle;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 .login-footer {
   font-size: 8px;
   color: var(--text-faint);
