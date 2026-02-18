@@ -111,21 +111,51 @@ async function apiLogin(email, password) {
  * The invite_token acts as a short-lived JWT — we send it as the Bearer token
  * and PUT a new password onto the user account.
  */
+/**
+ * Two-step invite acceptance:
+ *
+ * Step 1 — POST /verify?token=TOKEN&type=invite  (empty body)
+ *           GoTrue confirms the user and returns a session
+ *           { access_token, refresh_token, user: { email } }
+ *
+ * Step 2 — PUT /user  (Bearer access_token from step 1)
+ *           Body: { password }
+ *           Sets the user's password
+ *
+ * Returns the step-1 session so the caller can log the user straight in.
+ */
 async function apiAcceptInvite(inviteToken, password) {
-  // Netlify GoTrue requires token + type as URL query params,
-  // and password in the JSON body — NOT all three in the body.
-  const url = `${IDENTITY_URL}/verify?token=${encodeURIComponent(inviteToken)}&type=invite`;
-  const res = await fetch(url, {
+  // ── Step 1: exchange invite token for a session ──
+  const verifyUrl = `${IDENTITY_URL}/verify?token=${encodeURIComponent(inviteToken)}&type=invite`;
+  const verifyRes = await fetch(verifyUrl, {
     method:  "POST",
     headers: { "Content-Type": "application/json" },
-    body:    JSON.stringify({ password }),
+    body:    JSON.stringify({}),
   });
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error(data.msg || data.error_description || "Failed to activate account. The invite link may have expired.");
+  const session = await verifyRes.json();
+  if (!verifyRes.ok) {
+    throw new Error(
+      session.msg || session.error_description ||
+      "Invite token invalid or expired. Please request a new invitation."
+    );
   }
-  // Returns: { access_token, refresh_token, token_type, expires_in, user: { email, ... } }
-  return data;
+
+  // ── Step 2: set the password using the session access token ──
+  const userRes = await fetch(`${IDENTITY_URL}/user`, {
+    method:  "PUT",
+    headers: {
+      "Content-Type":  "application/json",
+      "Authorization": `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({ password }),
+  });
+  const user = await userRes.json();
+  if (!userRes.ok) {
+    throw new Error(user.msg || user.error_description || "Failed to set password.");
+  }
+
+  // Return the session (access_token, refresh_token, user.email)
+  return { ...session, user };
 }
 
 /** Decode a JWT payload (no verification — client-side only) */
